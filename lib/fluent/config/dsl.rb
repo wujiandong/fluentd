@@ -27,6 +27,8 @@ module Fluent
         end
 
         def self.parse(source, source_path="config.rb")
+          confpath = File.dirname(File.expand_path(source_path))
+	        endres = parse_include(source,confpath,[])
           Proxy.new('ROOT', nil).eval(source, source_path).to_config_element
         end
         def self.parse_include(content,confpath=nil,attrs=[])
