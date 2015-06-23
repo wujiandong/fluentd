@@ -29,6 +29,52 @@ module Fluent
         def self.parse(source, source_path="config.rb")
           Proxy.new('ROOT', nil).eval(source, source_path).to_config_element
         end
+        def self.parse_include(content,confpath=nil,attrs=[])
+          attrs.push(content)
+          require 'httpclient'
+          clt = HTTPClient.new
+          res = /(include|@include).*/m.match(content).to_s
+          res.split("\n").each do |i|
+            content.gsub!(i,"")
+            i.strip!
+            if ! i.start_with?("#")
+              url=i.split(%r{\s+})[1]
+              url.gsub!("\"","")
+              u = URI.parse(url)
+              if u.scheme == 'file' || u.path == url
+
+                path = u.path
+                if path[0] != ?/ and path[-1] == ?/
+                  pattern = File.join(File.join(confpath,path),"*.rb")
+                elsif path[0] == ?/ and  FileTest::directory? path
+                  pattern = File.join(path,"*.rb")
+                elsif path[0] == ?/ and path[-1] != ?/  and FileTest::file? path
+                  pattern = path
+                end
+                files = Dir.glob(pattern.to_s)
+                if ! files.length.eql?(0) then
+                  files.sort.each { |path|
+                    t = File.read(path)
+                    dirpath = File.dirname(path)
+                    attrs.push(t.force_encoding('utf-8'))
+                    parse_include(t,dirpath,attrs)
+                    }
+                else
+                  raise ConfigParseError, "include error #{pattern} not exists!"
+                end
+              else
+                $log.info url,"parse_include"
+                out = clt.get(url)
+                attrs.push(out.content.force_encoding('utf-8'))
+                parse_include(out.content.force_encoding('utf-8'),nil,attrs=attrs)
+              end
+            end
+
+          end
+          return attrs.uniq.join("\n")
+          rescue => e
+            raise ConfigParseError, "about include #{confpath} error "
+        end
       end
 
       class Proxy
